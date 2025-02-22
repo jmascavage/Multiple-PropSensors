@@ -21,8 +21,8 @@ int sensorEchoPins[numSensors]                = {4, 7, 10, 25}; // sensorEchoPin
 int minTriggerDistances[numSensors]           = {10, 10, 10, 10}; // minimum distance, inches,  object must be away in order to trigger
 int maxTriggerDistances[numSensors]           = {72, 72, 72, 72}; // maximum distance, inches, object must be away in order to trigger
 int requiredHitCounts[numSensors]             = {2, 2, 2, 2}; // multiple distance pollings are used to reduce errors, this is how many hits between min/max need to be met
-unsigned long  holdTriggerPinMillis[numSensors] = {10000, 10000, 10000, 10000}; // number of milliseconds to maintain trigger pin signal
-unsigned long resetDelayMillis[numSensors]    = {5000, 5000, 5000, 5000}; // number of milliseconds before prop can be triggered again after being triggered - should reflect any time prop needs to prepare to be triggered again
+unsigned long holdTriggerPinMillis[numSensors] = {50, 500, 500, 500}; // number of milliseconds to maintain trigger pin signal
+unsigned long resetDelayMillis[numSensors]     = {30000, 5000, 5000, 5000}; // number of milliseconds before prop can be triggered again after being triggered - should reflect any time prop needs to prepare to be triggered again
 unsigned long sensorTriggerTimes[numSensors]; //this will hold the timestamp in millis of when the sensor triggered, used to compare against resetDelayMillis to see if it is time to return to POLLING_MODE
 
 
@@ -95,14 +95,15 @@ void processSensor(int sensorIndex) {
   
 }
 
-//each "mode" handling function should manage a state transition - checking to see if the transition is ready and quickly returning control
+//each "mode" handling function manages a state transition - they must be fast to avoid blocking other sensors, so avoid long-lived actions and delays where possible
+//check to see if the transition is ready - if so quickly perform the action, if not, check back in next run - either way quickly return control
 void processPollingMode(int sensorIndex) {
 
   log("Processing POLLING_MODE on sensor " + String(sensorIndex));
 
   if(isSensorTriggered(sensorIndex)) {
-    log("Activate trigger pin for sensor " + String(sensorIndex));
-    digitalWrite(transistorGatePins[sensorIndex], HIGH);     // powers transistor to all current to flow
+    log("Activate trigger pin for sensor " + String(sensorIndex) + " and shift to TRIGGER_MODE");
+    digitalWrite(transistorGatePins[sensorIndex], HIGH);     // powers transistor to allow current to flow
     sensorTriggerTimes[sensorIndex] = millis();
     sensorStates[sensorIndex] = TRIGGERED_MODE;
   }
@@ -114,6 +115,7 @@ void processTriggeredMode(int sensorIndex) {
   
 //  log("sensorTriggerTimes[sensorIndex] " + String(sensorTriggerTimes[sensorIndex]) + " holdTriggerPinMillis[sensorIndex] " + String(holdTriggerPinMillis[sensorIndex]) + " sum: " + String(sensorTriggerTimes[sensorIndex] + holdTriggerPinMillis[sensorIndex]));
   if( sensorTriggerTimes[sensorIndex] + holdTriggerPinMillis[sensorIndex] < millis() ) {
+    log("Deactivate trigger pin for sensor " + String(sensorIndex) + " and shift to RESET_MODE");
     digitalWrite(transistorGatePins[sensorIndex], LOW);     // cease powering transistor to block current flow
     sensorStates[sensorIndex] = RESET_MODE;
   }
@@ -124,6 +126,7 @@ void processResetMode(int sensorIndex) {
   log("Processing RESET_MODE on sensor " + String(sensorIndex));
 
   if( sensorTriggerTimes[sensorIndex] + holdTriggerPinMillis[sensorIndex] + resetDelayMillis[sensorIndex] < millis() ) {
+    log("Shifting sensor " + String(sensorIndex) + " to POLLING_MODE");
     sensorStates[sensorIndex] = POLLING_MODE;
   }
 }
